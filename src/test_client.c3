@@ -45,18 +45,10 @@ fn int run_test_client() {
 	// START HERE
 	common::send_username(peer, username)!!;
 
-	ChatClient tuple = {client, {true}};
-
-	// Thread thread;
-	// thread.create( (ThreadFn) &client_event_loop,  &tuple)!!;
-
-	// client_user_input(peer, username, &tuple.running);
 	common::send_broadcast(peer, "This is a message to our server!")!!;
 	enet::host_flush(client);
 	enet::peer_disconnect(peer, 0);
 
-	tuple.running.store(false);
-	// (void) thread.join();
 	enet::host_flush(client);
 	enet::peer_reset(peer);
 	return 0;

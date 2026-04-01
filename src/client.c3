@@ -45,14 +45,17 @@ fn int run_client(String uname) {
 	// START HERE
 	common::send_username(peer, username)!!;
 
-	ChatClient tuple = {client, {true}};
+	Atomic{bool} running;
+
+	ChatClient cli = {};
+	cli.init(client, username, &running);
 
 	Thread thread;
-	thread.create( (ThreadFn) &client_event_loop,  &tuple)!!;
+	thread.create( (ThreadFn) &client_event_loop,  &cli)!!;
 
-	client_user_input(peer, username, &tuple.running);
+	client_user_input(peer, username, &running);
 
-	tuple.running.store(false);
+	running.store(false);
 	(void) thread.join();
 	enet::peer_disconnect(peer, 0);
 	enet::host_flush(client);
@@ -60,12 +63,6 @@ fn int run_client(String uname) {
 	// END HERE
 	return 0;
 }
-
-struct ChatClient {
-	ENetHost* client;
-	Atomic{bool} running;
-}
-
 
 fn void client_user_input(ENetPeer* server , String username, Atomic{bool}* running) {
 	io::printfn("Client %s has connected! Say hi!", username);
@@ -82,72 +79,95 @@ fn void client_user_input(ENetPeer* server , String username, Atomic{bool}* runn
 	}
 }
 
-fn int client_event_loop(ChatClient* tuple) {
-	ENetHost* client = tuple.client;
-
-	int user_id;
-
+struct ChatClient {
+	inline ENetHost* client;
+	Atomic{bool}* cont;
+	int id;
+	String username;
 	ClientMap otherclients;
-	otherclients.init(mem);
-	defer { 
-		foreach(ClientData* data : otherclients.value_iter()) {
-			if(data.username.len > 0) data.username.free(mem);
-			mem::free(data);
-		}
-		otherclients.free();
+}
+
+fn void ChatClient.init(&self, ENetHost* enetclient, String username, Atomic{bool}* cont) {
+	self.client = enetclient;
+	// make a copy so we dont run into weird concurrency issues
+	self.username = username.copy(mem);
+	self.cont = cont;
+	self.cont.store(true);
+	self.otherclients.init(mem);
+}
+
+macro bool ChatClient.running(&self) => self.cont.load();
+
+macro void ChatClient.end(&self) => self.cont.store(false);
+
+fn void ChatClient.free(&self) {
+	foreach(ClientData* data : self.otherclients.value_iter()) {
+		if(data.username.len > 0) data.username.free(mem);
+		mem::free(data);
 	}
+	self.otherclients.free();
+	self.username.free(mem);
+}
 
-	tuple.running.store(true);
+fn int client_event_loop(ChatClient* client) {	
+	defer client.free();
+
 	ENetEvent event;
-	while( tuple.running.load() == true) {
-		while(enet::host_service(client, &event, 0) ) {
-			defer enet::packet_destroy(event.packet);
+	while( client.running()) {
+		while(enet::host_service(client.client, &event, 0) ) {
 			switch(event.type) {
-				case ENET_EVENT_TYPE_RECEIVE: 
-					Packet? packet = common::parse_packet(event.packet.data);
-					if(catch err = packet) {
-						io::printfn("Recieved bad packet from server! ERROR %s", err);
-						break;
-					}
-					// Packet packet;
-					defer common::destroy_packet(packet);
-					// io::printfn("Recieved Packet of Type %s!", packet.ptype.nameof);
-					switch(packet.ptype) {
-						case PacketType.HANDSHAKE: 
-							user_id = packet.handshake.recieved_id;
-							foreach(newclient : packet.handshake.connected_clients) {
-								if(newclient.id == user_id) continue;
-								ClientData* copy = mem::new(ClientData);
-								otherclients[newclient.id] = copy;
-								copy.id = newclient.id;
-								copy.username = newclient.username.copy(mem);
-							}
-							case PacketType.USER_JOIN:
-								if(user_id == packet.userjoin.id) continue;
-								ClientData* newclient = mem::new(ClientData);
-								newclient.id = packet.userjoin.id;
-								newclient.username = packet.userjoin.username.copy(mem);
-								otherclients[newclient.id] =newclient;
-								io::printfn("'%s' joined the server! Say hi!", newclient.username);
-							case PacketType.USER_MESSAGE:
-								int id = packet.usermsg.id;
-								if(user_id == id) continue;
-								String message = packet.usermsg.message;
-								io::printfn("%s: %s", otherclients[id].username, message)!!;
-						default: io::printfn("Unhandled packet type %s recieved...", packet.ptype.nameof);
-					}
+				case ENET_EVENT_TYPE_RECEIVE:			 client_on_recieve(client, &event);
 
-				case ENET_EVENT_TYPE_DISCONNECT:
-					tuple.running.store(false);
-					io::printfn("Lost connection to server. Reason: SERVER SHUTDOWN or MANUAL CLOSE");
-				case ENET_EVENT_TYPE_DISCONNECT_TIMEOUT:
-					tuple.running.store(false);
-					io::printfn("Lost connection to server. Reason: TIMEOUT");
+				case ENET_EVENT_TYPE_DISCONNECT:	
+				case ENET_EVENT_TYPE_DISCONNECT_TIMEOUT: client_on_disconnect(client, &event);
 				default: io::printfn("EVENT TYPE: %s", event.type.nameof); break;
 			}
 		}
 	}
-
-
 	return 0;
+}
+
+fn void client_on_recieve(ChatClient* client, ENetEvent* event) {
+	defer enet::packet_destroy(event.packet);
+	Packet? packet = common::parse_packet(event.packet.data);
+	if(catch err = packet) {
+		io::printfn("Recieved bad packet from server! ERROR %s", err);
+		return;
+	}
+	// Packet packet;
+	defer common::destroy_packet(packet);
+	// io::printfn("Recieved Packet of Type %s!", packet.ptype.nameof);
+	switch(packet.ptype) {
+		case PacketType.HANDSHAKE: 
+			client.id = packet.handshake.recieved_id;
+			foreach(newclient : packet.handshake.connected_clients) {
+				if(newclient.id == client.id) break;
+				ClientData* copy = mem::new(ClientData);
+				client.otherclients[newclient.id] = copy;
+				copy.id = newclient.id;
+				copy.username = newclient.username.copy(mem);
+			}
+			case PacketType.USER_JOIN:
+				if(client.id == packet.userjoin.id) break;
+				ClientData* newclient = mem::new(ClientData);
+				newclient.id = packet.userjoin.id;
+				newclient.username = packet.userjoin.username.copy(mem);
+				client.otherclients[newclient.id] =newclient;
+				io::printfn("'%s' joined the server! Say hi!", newclient.username);
+			case PacketType.USER_MESSAGE:
+				int id = packet.usermsg.id;
+				if(client.id == id) break;
+				String message = packet.usermsg.message;
+				io::printfn("%s: %s", client.otherclients[id].username, message)!!;
+		default: io::printfn("Unhandled packet type %s recieved...", packet.ptype.nameof);
+	}
+}
+
+fn void client_on_disconnect(ChatClient* client, ENetEvent* event) {
+	if (event.type == ENET_EVENT_TYPE_DISCONNECT_TIMEOUT) {
+		io::printfn("Lost connection to server. Reason: TIMEOUT");
+	} else {
+		io::printfn("Diconnected from server.");
+	}
+	client.end();
 }
