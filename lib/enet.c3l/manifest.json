@@ -1,0 +1,16 @@
+// Originally from https://github.com/zpl-c/enet
+{
+    "provides": "enet",
+    "c-sources": ["enet.c"],
+    "c-include-dirs": ["."],
+    "targets" : {
+        "macos-x64" : {
+        },
+        "macos-aarch64" : {
+        },
+        "linux-x64" : {
+        },
+	    "windows-x64" : {
+	    }
+    }
+}
