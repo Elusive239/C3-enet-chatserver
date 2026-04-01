@@ -1,4 +1,4 @@
-An example text chat client written in [C3](https://c3-lang.org/)!  
+An example text chat client/server written in [C3](https://c3-lang.org/)!  
 
 I've been writing this to figure out client / server shenanigans for an app I want to write.  
 
