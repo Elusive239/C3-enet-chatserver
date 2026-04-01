@@ -16,7 +16,7 @@ Server currently hardcoded to use port 7777
  - Raylib or SDL3 based client to replace the Terminal based one currently in use.  
  - User "account" creation (username, password, permissions).   
  	Nothing super complicated. At most for this project just storing it in a .csv file somewhere...  
- - Simple admin user commands & user commands
+ - Simple admin commands & user commands
     Example(s):  
 	`/roll 1d6`           -> rolls a d6, prints the result, no privileges required  
 	`/mute %%username%%`  ->  prevent a user from sending messages, alert user they're muted when sending a msg, moderator privilege required  
