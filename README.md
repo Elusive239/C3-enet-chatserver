@@ -10,9 +10,10 @@ To run as server: `c3c run server`
 Server currently hardcoded to use port 7777  
 
 ## Known Issues
- - When a client disconnects, the server crashes. Seems to be a bug in enet?  
+ - When typing in one client and recieving a message from another, typed text is displaced in terminal. The actual contents of stdin are of course unaffected.
 
-## TODO:  
+## TODO  
+ - Replace "io::printfn" and other printing functions with a proper logger of some variety.
  - Raylib or SDL3 based client to replace the Terminal based one currently in use.  
  - User "account" creation (username, password, permissions).   
  	Nothing super complicated. At most for this project just storing it in a .csv file somewhere...  

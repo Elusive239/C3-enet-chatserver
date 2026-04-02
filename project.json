@@ -8,7 +8,7 @@
   // Libraries to use for all targets.
   "dependencies": [ "enet" ],
   // Authors, optionally with email.
-  "authors": [ "John Doe <john.doe@example.com>" ],
+  "authors": [ "Elusive239 <@elusive-noir.bsky.social>" ],
   // Version using semantic versioning.
   "version": "0.1.0",
   // Sources compiled for all targets.
@@ -41,14 +41,7 @@
       "type": "executable",
       // Additional libraries, sources
       // and overrides of global settings here.
-    },
-    "tclient": {
-      "features": ["TEST"],
-      // Executable or library.
-      "type": "executable",
-      // Additional libraries, sources
-      // and overrides of global settings here.
-    },
+    }
   },
   // Global settings.
   // CPU name, used for optimizations in the LLVM backend.

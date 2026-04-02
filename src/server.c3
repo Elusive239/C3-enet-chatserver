@@ -77,16 +77,19 @@ fn void server_event_loop(ENetHost * enetserver) {
 			case ENET_EVENT_TYPE_DISCONNECT:
 			case ENET_EVENT_TYPE_DISCONNECT_TIMEOUT: server_on_disconnect(&server, &event);
 
-			case ENET_EVENT_TYPE_NONE: io::printfn("No Event!"); break;
+			case ENET_EVENT_TYPE_NONE: 	io::printfn("No Event!"); break;
+			default:					io::printfn("%s!", event.type); break;
 		}
 	}
 
 }
 
-fn void server_on_connect(ChatServer* server, ENetEvent* event)  => @pool() {
+fn void server_on_connect(ChatServer* server, ENetEvent* event) {
 	int newid = server.new_id();
-    io::printf("A new client connected from %s:%s.\n",  event.peer.address.host, event.peer.address.port);
-	event.peer.data = mem::new(ClientData,  {.id = newid});
+	ClientData* data = mem::new(ClientData);
+	data.id = newid;
+    // io::printf("A new client connected from %s:%s.\n",  event.peer.address.host, event.peer.address.port);
+	enet::peer_set_data(event.peer, data);
 	//Create a packet
 	Packet newpacket = {
 		.ptype = PacketType.HANDSHAKE,
@@ -96,10 +99,10 @@ fn void server_on_connect(ChatServer* server, ENetEvent* event)  => @pool() {
 		.handshake.connected_clients = server.clients.values(tmem),
 	};
 	common::send_packet(event.peer, newpacket)!!;
-	server.clients[newid] = event.peer.data;
+	server.clients[newid] = data;
 }
 
-fn void server_on_recieve(ChatServer* server, ENetEvent* event) {
+fn void server_on_recieve(ChatServer* server, ENetEvent* event) => @pool() {
 	defer enet::packet_destroy (event.packet);
 	Packet? received = common::parse_packet( 
 		event.packet.data
@@ -110,25 +113,26 @@ fn void server_on_recieve(ChatServer* server, ENetEvent* event) {
 	}
 	defer common::destroy_packet(received);
 
+	ClientData* client = enet::peer_get_data(event.peer);
 	switch(received.ptype ) {
-		case PacketType.REGISTER:
+		case PacketType.REGISTER: 
 			io::printfn("Recieved handshake '%s' from user %s!", 
 				received.register.username,
-				((ClientData*)event.peer.data).id
+				client.id
 			);
-			((ClientData*)event.peer.data).username = received.register.username.copy(mem); 
+			client.username = received.register.username.copy(mem); 
 			Packet updatepacket = {
 				.ptype = PacketType.USER_JOIN,
-				.userjoin.id = 		 ((ClientData*)event.peer.data).id ,
-				.userjoin.username = ((ClientData*)event.peer.data).username,
+				.userjoin.id = 		 client.id ,
+				.userjoin.username = client.username,
 			};
 			common::send_packet_all(server.server, updatepacket)!!;
 		case PacketType.BROADCAST:
 			io::printfn("Recieved msg '%s' from user %s!", 
 				received.broadcast.message,
-				((ClientData*)event.peer.data).username
+				client.username
 			);
-			int ignore_client = ((ClientData*)event.peer.data).id;
+			int ignore_client = client.id;
 			
 			// Get sender id, add to packet
 			// Add message contents to packet
@@ -145,14 +149,14 @@ fn void server_on_recieve(ChatServer* server, ENetEvent* event) {
 }
 
 fn void server_on_disconnect(ChatServer* server, ENetEvent* event) {
+	ClientData* client = enet::peer_get_data(event.peer);
+	defer client.free();
 	if(event.type == ENET_EVENT_TYPE_DISCONNECT_TIMEOUT) {
-		io::printf("%s disconnected due to timeout.\n", event.peer);
+		io::printf("%s disconnected due to timeout.\n", client.username);
 	}else {
-		io::printf("%s disconnected.\n", event.peer);
+		io::printf("%s disconnected.\n", client.username);
 	}
 	/* Reset the peer's client information. */
-	ClientData* client = event.peer.data;
 	server.clients.remove(client.id);
-	client.free();
-    event.peer.data = null;
+    enet::peer_set_data(event.peer, null);
 }
