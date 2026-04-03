@@ -64,7 +64,9 @@ fn void assert_packet(Packet expect, Packet result) {
 		case USER_MESSAGE: 
 			assert (result.usermsg.id == expect.usermsg.id ,"Expected %s, Got %s", expect.usermsg.id, result.usermsg.id);
 			assert (result.usermsg.message == expect.usermsg.message, "Expected %s, Got %s",expect.usermsg.message, result.usermsg.message );
-		
+		case USER_COMMAND:
+			assert (result.usercommand.command == expect.usercommand.command , "Expected %s, Got %s", expect.usercommand.command, result.usercommand.command);
+			assert (result.usercommand.args == expect.usercommand.args , "Expected %s, Got %s", expect.usercommand.args, result.usercommand.args);
 		default: unreachable("Unimplemented PacketType %s", result.ptype);
 	} 
 }
@@ -190,6 +192,42 @@ fn void packet_parse() @test {
 		defer common::destroy_packet(result);
 		assert_packet( expect,  result);
 	}
+	{
+		const String CMD = "help";
+		const String ARGS = "";
+
+		Packet expect = {
+			.ptype = PacketType.USER_COMMAND ,
+			.usercommand.command = CMD,
+			.usercommand.args = ARGS
+		};
+		const usz LEN = 1 + (usz.sizeof * 3) + CMD.len + ARGS.len;
+		char[*] testdata = { 
+			PacketType.USER_COMMAND.ordinal, ...usz_to_bytes(LEN), ...usz_to_bytes(CMD.len), ...CMD, ...usz_to_bytes(ARGS.len)//, //...ARGS 
+		};
+		Packet? result = common::parse_packet(&testdata);
+		if(catch err =result) err~!!;
+		defer common::destroy_packet(result);
+		assert_packet( expect,  result);
+	}
+	{
+		const String CMD = "help";
+		const String ARGS = "oh ok here we are some args";
+
+		Packet expect = {
+			.ptype = PacketType.USER_COMMAND ,
+			.usercommand.command = CMD,
+			.usercommand.args = ARGS
+		};
+		const usz LEN = 1 + (usz.sizeof * 3) + CMD.len + ARGS.len;
+		char[*] testdata = { 
+			PacketType.USER_COMMAND.ordinal, ...usz_to_bytes(LEN), ...usz_to_bytes(CMD.len), ...CMD, ...usz_to_bytes(ARGS.len), ...ARGS 
+		};
+		Packet? result = common::parse_packet(&testdata);
+		if(catch err =result) err~!!;
+		defer common::destroy_packet(result);
+		assert_packet( expect,  result);
+	}
 }
 
 fn void packet_write() @test {
@@ -239,6 +277,50 @@ fn void packet_write() @test {
 		};
 		char[*] expect = { PTYPE.ordinal, ...usz_to_bytes(1 + (usz.sizeof * 2) + MESSAGE.len ), ...usz_to_bytes(MESSAGE.len), ...MESSAGE };
 
+		String? r = common::write_packet(testdata);
+		if(catch err = r) return err~!!;
+
+		assert(r.len == expect.len, "Expected %s Got %s", expect.len, r.len); 
+		assert(r == ((String)expect[:r.len]), "Expected %s Got %s", expect, r[:r.len]);
+		
+	}
+	{
+		const String CMD = "help";
+		const String ARGS = "";
+
+		Packet testdata = {
+			.ptype = PacketType.USER_COMMAND ,
+			.usercommand.command = CMD,
+			.usercommand.args = ARGS
+		};
+		const usz LEN = 1 + (usz.sizeof * 3) + CMD.len + ARGS.len;
+
+		char[*] expect = { 
+			PacketType.USER_COMMAND.ordinal, ...usz_to_bytes(LEN), ...usz_to_bytes(CMD.len), ...CMD, ...usz_to_bytes(ARGS.len)//, //...ARGS 
+		};
+
+		String? r = common::write_packet(testdata);
+		if(catch err = r) return err~!!;
+
+		assert(r.len == expect.len, "Expected %s Got %s", expect.len, r.len); 
+		assert(r == ((String)expect[:r.len]), "Expected %s Got %s", expect, r[:r.len]);
+		
+	}
+	{
+		const String CMD = "help";
+		const String ARGS = "oh ok here we are some args";
+
+		Packet testdata = {
+			.ptype = PacketType.USER_COMMAND ,
+			.usercommand.command = CMD,
+			.usercommand.args = ARGS
+		};
+		const usz LEN = 1 + (usz.sizeof * 3) + CMD.len + ARGS.len;
+
+		char[*] expect = { 
+			PacketType.USER_COMMAND.ordinal, ...usz_to_bytes(LEN), ...usz_to_bytes(CMD.len), ...CMD, ...usz_to_bytes(ARGS.len), ...ARGS 
+		};
+		
 		String? r = common::write_packet(testdata);
 		if(catch err = r) return err~!!;
 

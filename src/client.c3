@@ -6,7 +6,7 @@ fn int run_client(String uname) {
 	String username = uname.copy(mem); 
 	defer username.free(mem);
 	if (enet::initialize () != 0) {
-        io::eprintf("An error occurred while initializing ENet.\n");
+        elog("An error occurred while initializing ENet.");
         return -1;
     }
     defer enet::deinitialize();
@@ -14,7 +14,7 @@ fn int run_client(String uname) {
 	ENetHost* client = enet::host_create(null, 1, 1, 0, 0);
 
 	if( !client) {
-		io::eprintfn("An error occurred while trying to create an ENet client host!");
+		elog("An error occurred while trying to create an ENet client host!");
 		return -1;
 	}
 
@@ -30,15 +30,15 @@ fn int run_client(String uname) {
 	peer = enet::host_connect(client, &address, 1, 0);
 
 	if(!peer) {
-		io::eprintfn("No available peers for initiating an ENet connection!");
+		elog("No available peers for initiating an ENet connection!");
 		return -1;
 	}
 
 	if(  enet::host_service(client, &event, 5000) > 0 && event.type == ENET_EVENT_TYPE_CONNECT) {
-		io::printfn("Connected to %s:%s successfully!", hostname, port);
+		log("Connected to %s:%s successfully!", hostname, port);
 	}else {
 		enet::peer_reset(peer);
-		io::printfn("Connection to %s:%s failed!", hostname, port);
+		elog("Connection to %s:%s failed!", hostname, port);
 		return 0;
 	}
 
@@ -65,17 +65,32 @@ fn int run_client(String uname) {
 }
 
 fn void client_user_input(ENetPeer* server , String username, Atomic{bool}* running) {
-	io::printfn("Client %s has connected! Say hi!", username);
+	log("Client %s has connected! Say hi!", username);
 
 	while( running.load()) {
 		String msg = io::treadline()!!;
-		if(msg.len  == 0) continue;
-		if(msg == "/quit" || msg == "/exit"){ 
+		if(msg.len  == 0) {continue;}
+		else if(msg == "/quit" || msg == "/exit"){ 
 			running.store(false); 
 			break;
+		} else if (msg.len > 0 && msg[0] == '/') {
+			int index = (int)msg.index_of(" ") ?? -1;
+			String args = index < 0 ? "" : msg[index+1..];
+			String cmd = msg[1..max(index, msg.len-1)];
+			@pool() {
+				Packet command = {
+					.ptype = USER_COMMAND,
+					.usercommand = {
+						.command = cmd .copy(tmem), 
+						.args    = args.trim().copy(tmem)
+					}
+				};
+				common::send_packet(server, command)!!;
+			};
+		} else {
+			common::send_broadcast(server, msg)!!;
+			log("%s: %s", username, msg);
 		}
-		common::send_broadcast(server, msg)!!;
-		io::printfn("%s: %s", username, msg);
 	}
 }
 
@@ -109,7 +124,7 @@ fn void ChatClient.free(&self) {
 	self.username.free(mem);
 }
 
-fn int client_event_loop(ChatClient* client) {	
+fn int client_event_loop(ChatClient* client) => @pool_init(mem, 1024*4) {	
 	defer client.free();
 
 	ENetEvent event;
@@ -120,7 +135,7 @@ fn int client_event_loop(ChatClient* client) {
 
 				case ENET_EVENT_TYPE_DISCONNECT:	
 				case ENET_EVENT_TYPE_DISCONNECT_TIMEOUT: client_on_disconnect(client, &event);
-				default: io::printfn("EVENT TYPE: %s", event.type.nameof); break;
+				default: ilog("EVENT TYPE: %s", event.type.nameof); break;
 			}
 		}
 	}
@@ -131,12 +146,12 @@ fn void client_on_recieve(ChatClient* client, ENetEvent* event) {
 	defer enet::packet_destroy(event.packet);
 	Packet? packet = common::parse_packet(event.packet.data);
 	if(catch err = packet) {
-		io::printfn("Recieved bad packet from server! ERROR %s", err);
+		elog("Recieved bad packet from server! ERROR %s", err);
 		return;
 	}
 	// Packet packet;
 	defer common::destroy_packet(packet);
-	// io::printfn("Recieved Packet of Type %s!", packet.ptype.nameof);
+	// log("Recieved Packet of Type %s!", packet.ptype.nameof);
 	switch(packet.ptype) {
 		case PacketType.HANDSHAKE: 
 			client.id = packet.handshake.recieved_id;
@@ -153,21 +168,21 @@ fn void client_on_recieve(ChatClient* client, ENetEvent* event) {
 				newclient.id = packet.userjoin.id;
 				newclient.username = packet.userjoin.username.copy(mem);
 				client.otherclients[newclient.id] =newclient;
-				io::printfn("'%s' joined the server! Say hi!", newclient.username);
+				log("'%s' joined the server! Say hi!", newclient.username);
 			case PacketType.USER_MESSAGE:
 				int id = packet.usermsg.id;
 				if(client.id == id) break;
 				String message = packet.usermsg.message;
-				io::printfn("%s: %s", client.otherclients[id].username, message)!!;
-		default: io::printfn("Unhandled packet type %s recieved...", packet.ptype.nameof);
+				log("%s: %s", client.otherclients[id].username, message)!!;
+		default: elog("Unhandled packet type %s recieved...", packet.ptype.nameof);
 	}
 }
 
 fn void client_on_disconnect(ChatClient* client, ENetEvent* event) {
 	if (event.type == ENET_EVENT_TYPE_DISCONNECT_TIMEOUT) {
-		io::printfn("Lost connection to server. Reason: TIMEOUT");
+		elog("Lost connection to server. Reason: TIMEOUT");
 	} else {
-		io::printfn("Diconnected from server.");
+		ilog("Diconnected from server.");
 	}
 	client.end();
 }

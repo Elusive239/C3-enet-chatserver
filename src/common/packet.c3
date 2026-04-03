@@ -15,6 +15,7 @@ enum PacketType : inline char {
 	BROADCAST,		// Send a message to the server! or get a message from another client *throught* the server
 	USER_JOIN,  	// Update other clients username/id map on REGISTER
 	USER_MESSAGE,   // Send SenderId + Sender Message from a broadcast
+	USER_COMMAND,	//
 }
 
 struct RegisterPacket {
@@ -40,6 +41,11 @@ struct UserMessagePacket {
 	String message;
 }
 
+struct UserCommandPacket {
+	String command;
+	String args; //interpreted by server for now? maybe client should handle that...
+}
+
 // Packet Definition
 /*
 	1. Packet Type
@@ -54,6 +60,7 @@ struct Packet {
 		BroadcastPacket broadcast;
 		UserJoinPacket userjoin;
 		UserMessagePacket usermsg;
+		UserCommandPacket usercommand;
 	}
 }
 
@@ -96,6 +103,7 @@ fn void destroy_packet(Packet packet) {
 		case BROADCAST: 	destroy_packet_data{BroadcastPacket}(packet.broadcast);
 		case USER_JOIN: 	destroy_packet_data{UserJoinPacket}(packet.userjoin);
 		case USER_MESSAGE: 	destroy_packet_data{UserMessagePacket}(packet.usermsg);
+		case USER_COMMAND: 	destroy_packet_data{UserCommandPacket}(packet.usercommand);
 		default: unreachable("Unimplemented PacketType '%s'", packet.ptype.nameof);
 	}
 }
@@ -127,11 +135,11 @@ fn void destroy_packet_data(Type value) <Type> @if($defined(Type.membersof )) {
 fn Packet? parse_packet(char* data) {
 	ByteReader reader = io::wrap_bytes(data[:(PacketType.sizeof + usz.sizeof)]);
 
-	PacketType ptype = PacketType.from_ordinal( reader.read_byte()! );
+	PacketType ptype = PacketType.from_ordinal( reader.read_byte()!! );
 	if(ptype == PacketType.ERROR) return {};
-	usz packet_size = read_number{usz}(&reader)!; // should include (PacketType.sizeof + usz.sizeof) in size calculation
-	// io::printfn("Read Type: %s, Bytes: %s", ptype.nameof, data[:20]);
-	// io::printfn("READ PACKET SIZE %s, at %d", packet_size, reader.index);
+	usz packet_size = read_number{usz}(&reader)!!; // should include (PacketType.sizeof + usz.sizeof) in size calculation
+	// ilog("Read Type: %s, Bytes: %s", ptype.nameof, data[:20]);
+	// ilog("READ PACKET SIZE %s, at %d", packet_size, reader.index);
 	reader.init(
 		data[:packet_size]
 	);
@@ -142,11 +150,13 @@ fn Packet? parse_packet(char* data) {
 
 macro Packet? read_packet_data(InStream reader, PacketType ptype) {
 	switch (ptype) {
-		case REGISTER:		return { .ptype = ptype, .register = (RegisterPacket ) 		read_packet_data_private{RegisterPacket} (reader) };
-		case HANDSHAKE:		return { .ptype = ptype, .handshake= (HandshakePacket) 		read_packet_data_private{HandshakePacket}(reader) };
-		case BROADCAST:		return { .ptype = ptype, .broadcast= (BroadcastPacket) 		read_packet_data_private{BroadcastPacket}(reader) };
-		case USER_JOIN:		return { .ptype = ptype, .userjoin = (UserJoinPacket)  		read_packet_data_private{UserJoinPacket}(reader) };
-		case USER_MESSAGE:	return { .ptype = ptype, .usermsg  = (UserMessagePacket) 	read_packet_data_private{UserMessagePacket}(reader) };
+		case REGISTER:		return { .ptype = ptype, .register 		= (RegisterPacket ) 		read_packet_data_private{RegisterPacket} (reader) };
+		case HANDSHAKE:		return { .ptype = ptype, .handshake		= (HandshakePacket) 		read_packet_data_private{HandshakePacket}(reader) };
+		case BROADCAST:		return { .ptype = ptype, .broadcast		= (BroadcastPacket) 		read_packet_data_private{BroadcastPacket}(reader) };
+		case USER_JOIN:		return { .ptype = ptype, .userjoin 		= (UserJoinPacket)  		read_packet_data_private{UserJoinPacket}(reader) };
+		case USER_MESSAGE:	return { .ptype = ptype, .usermsg  		= (UserMessagePacket) 		read_packet_data_private{UserMessagePacket}(reader) };
+		case USER_COMMAND:	return { .ptype = ptype, .usercommand  	= (UserCommandPacket) 		read_packet_data_private{UserCommandPacket}(reader) };
+		
 		default: unreachable("Unimplmeneted Packet Type " +++ $$FUNC +++ " %s", ptype.nameof);
 	}
 }
@@ -161,7 +171,7 @@ fn Type? read_packet_data_private(InStream reader) <Type> @if($defined(Type.memb
 				{
 					usz len = read_number{usz}(reader)!;
 					data.$eval($member.nameof) = (String) mem::new_array(char, len);
-					reader.read(data.$eval($member.nameof))!;
+					if(len) reader.read(data.$eval($member.nameof))!!;
 				}
 			$case $typefrom($member.type) == ClientData*[]: 
 				{
@@ -217,6 +227,7 @@ macro usz data_packet_size(packet) {
 		case BROADCAST:		return data_packet_size_private{BroadcastPacket}(packet.broadcast);
 		case USER_JOIN:		return data_packet_size_private{UserJoinPacket}(packet.userjoin);
 		case USER_MESSAGE:	return data_packet_size_private{UserMessagePacket}(packet.usermsg);
+		case USER_COMMAND:	return data_packet_size_private{UserCommandPacket}(packet.usercommand);
 		case ERROR	  : 	return 1;
 		default: unreachable("Unimplmeneted Packet Type " +++ $$FUNC +++ " %s", packet.ptype.nameof);
 	}
@@ -247,6 +258,7 @@ macro write_packet_data(OutStream writer, packet) {
 		case BROADCAST:		return write_packet_data_private{BroadcastPacket}(writer, &packet.broadcast)!;
 		case USER_JOIN:		return write_packet_data_private{UserJoinPacket}(writer, &packet.userjoin)!;
 		case USER_MESSAGE:	return write_packet_data_private{UserMessagePacket}(writer, &packet.usermsg)!;
+		case USER_COMMAND:	return write_packet_data_private{UserCommandPacket}(writer, &packet.usercommand)!;
 
 		case ERROR: return INVALID_PACKET_TYPE~;
 		default: unreachable("Unimplmeneted Packet Type " +++ $$FUNC +++ " %s" , packet.ptype.nameof);

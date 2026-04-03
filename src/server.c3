@@ -3,37 +3,46 @@ import std::io;
 import enet;
 
 fn int run_server() {
-	if (enet::initialize () != 0) {
-        io::printf("An error occurred while initializing ENet.\n");
-        return 1;
-    }
-
-    ENetAddress address = {};
+	ENetAddress address = {};
 
     address.host = enet::get_host_any(); /* Bind the server to the default localhost.     */
     address.port = 7777; /* Bind the server to port 7777. */
 
 	const int MAX_CLIENTS = 32;
 
-    /* create a server */
-    ENetHost * server = enet::host_create(&address, MAX_CLIENTS, 2, 0, 0);
-
-    if (server == null) {
-        io::printf("An error occurred while trying to create an ENet server host.\n");
-        return 1;
-    } else {
-		io::printfn("Host Created: Socket  %s", server.socket);
-		io::printfn("            : Address %s", server.address);
-	}
-
-	defer {
-		enet::host_flush(server);
-		enet::host_destroy(server);
-		enet::deinitialize();
-	};
-    io::printf("Started a server...\n");
+	ENetHost*? server = server_create(address, MAX_CLIENTS);
+	if(catch err = server) return err~!!;
+	defer server_kill(server);
+    ilog("Started a server...");
 	server_event_loop(server);
 	return 0;
+}
+
+faultdef FAILED_TO_INIT_ENET;
+faultdef FAILED_TO_START_SERVER;
+
+fn ENetHost*? server_create(ENetAddress address, int max_clients) {
+	if (enet::initialize () != 0) {
+        elog("An error occurred while initializing ENet.");
+        return FAILED_TO_INIT_ENET~;
+    }
+
+    /* create a server */
+    ENetHost * server = enet::host_create(&address, max_clients, 2, 0, 0);
+
+    if (server == null) {
+        elog("An error occurred while trying to create an ENet server host.");
+        return FAILED_TO_START_SERVER~;
+    } else {
+		ilog("Host Created: Socket  %s | Address %s", server.socket, server.address);
+	}
+	return server;
+}
+
+fn void server_kill(ENetHost* server) {
+	enet::host_flush(server);
+	enet::host_destroy(server);
+	enet::deinitialize();
 }
 
 struct ChatServer{
@@ -55,6 +64,7 @@ fn int ChatServer.new_id(&self) {
 }
 
 macro bool ChatServer.running(self) => self.cont;
+macro void ChatServer.end(self) => self.cont = false;
 
 fn void ChatServer.free(&self) {
 	foreach(ClientData* data : self.clients.value_iter()) {
@@ -70,25 +80,26 @@ fn void server_event_loop(ENetHost * enetserver) {
 	ENetEvent event;
 	defer server.free();
 
-	while(server.running()) while(enet::host_service(server, &event, 100) > 0) {
-        switch (event.type) {
-            case ENET_EVENT_TYPE_CONNECT:	server_on_connect(&server, &event);
-			case ENET_EVENT_TYPE_RECEIVE:	server_on_recieve(&server, &event);
-			case ENET_EVENT_TYPE_DISCONNECT:
-			case ENET_EVENT_TYPE_DISCONNECT_TIMEOUT: server_on_disconnect(&server, &event);
+	while(server.running()) {
+		while(enet::host_service(server, &event, 100) > 0) @pool() {
+			switch (event.type) {
+				case ENET_EVENT_TYPE_CONNECT:	server_on_connect(&server, &event);
+				case ENET_EVENT_TYPE_RECEIVE:	server_on_recieve(&server, &event);
+				case ENET_EVENT_TYPE_DISCONNECT:
+				case ENET_EVENT_TYPE_DISCONNECT_TIMEOUT: server_on_disconnect(&server, &event);
 
-			case ENET_EVENT_TYPE_NONE: 	io::printfn("No Event!"); break;
-			default:					io::printfn("%s!", event.type); break;
-		}
+				case ENET_EVENT_TYPE_NONE: 	ilog("No Event!"); break;
+				default:					wlog("Unimplemented Event Type %s!", event.type); break;
+			}
+		};
 	}
-
 }
 
 fn void server_on_connect(ChatServer* server, ENetEvent* event) {
 	int newid = server.new_id();
 	ClientData* data = mem::new(ClientData);
 	data.id = newid;
-    // io::printf("A new client connected from %s:%s.\n",  event.peer.address.host, event.peer.address.port);
+    // ilog("A new client connected from %s:%s.",  event.peer.address.host, event.peer.address.port);
 	enet::peer_set_data(event.peer, data);
 	//Create a packet
 	Packet newpacket = {
@@ -102,13 +113,13 @@ fn void server_on_connect(ChatServer* server, ENetEvent* event) {
 	server.clients[newid] = data;
 }
 
-fn void server_on_recieve(ChatServer* server, ENetEvent* event) => @pool() {
+fn void server_on_recieve(ChatServer* server, ENetEvent* event) {
 	defer enet::packet_destroy (event.packet);
 	Packet? received = common::parse_packet( 
 		event.packet.data
 	);
 	if(catch err = received) {
-		io::printf("Recieved broken packet! ERROR: %s", err);
+		elog("Recieved broken packet! %s", err);
 		return;
 	}
 	defer common::destroy_packet(received);
@@ -116,7 +127,7 @@ fn void server_on_recieve(ChatServer* server, ENetEvent* event) => @pool() {
 	ClientData* client = enet::peer_get_data(event.peer);
 	switch(received.ptype ) {
 		case PacketType.REGISTER: 
-			io::printfn("Recieved handshake '%s' from user %s!", 
+			ilog("Recieved handshake '%s' from user %s!", 
 				received.register.username,
 				client.id
 			);
@@ -128,7 +139,7 @@ fn void server_on_recieve(ChatServer* server, ENetEvent* event) => @pool() {
 			};
 			common::send_packet_all(server.server, updatepacket)!!;
 		case PacketType.BROADCAST:
-			io::printfn("Recieved msg '%s' from user %s!", 
+			ilog("Recieved msg '%s' from user %s!", 
 				received.broadcast.message,
 				client.username
 			);
@@ -144,7 +155,17 @@ fn void server_on_recieve(ChatServer* server, ENetEvent* event) => @pool() {
 			};
 			common::send_packet_all(server.server,  sendpacket)!!;
 			// for each user
-		default: io::printfn("Recieved an unhandled packet of type %s!", received.ptype.nameof);
+		case PacketType.USER_COMMAND: 
+			switch(received.usercommand.command) {
+				case "help": ilog("Need to list cmds");
+				case "squit":
+					ilog("Server shutting down...");
+					server.end();
+				default: 
+					elog("invalid command recieved! %s -- %s", received.usercommand.command ,received.usercommand.args);
+
+			}
+		default: wlog("Recieved an unhandled packet of type %s!", received.ptype.nameof);
 	}
 }
 
@@ -152,9 +173,9 @@ fn void server_on_disconnect(ChatServer* server, ENetEvent* event) {
 	ClientData* client = enet::peer_get_data(event.peer);
 	defer client.free();
 	if(event.type == ENET_EVENT_TYPE_DISCONNECT_TIMEOUT) {
-		io::printf("%s disconnected due to timeout.\n", client.username);
+		ilog("%s disconnected due to timeout.", client.username);
 	}else {
-		io::printf("%s disconnected.\n", client.username);
+		ilog("%s disconnected.", client.username);
 	}
 	/* Reset the peer's client information. */
 	server.clients.remove(client.id);
