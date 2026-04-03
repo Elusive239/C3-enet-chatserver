@@ -18,8 +18,6 @@ fn int run_server() {
 	return 0;
 }
 
-faultdef FAILED_TO_INIT_ENET;
-faultdef FAILED_TO_START_SERVER;
 
 fn ENetHost*? server_create(ENetAddress address, int max_clients) {
 	if (enet::initialize () != 0) {

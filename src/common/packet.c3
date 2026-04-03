@@ -64,8 +64,6 @@ struct Packet {
 	}
 }
 
-faultdef INVALID_PACKET_TYPE;
-
 fn void? send_broadcast(ENetPeer* peer, String message) {
 	send_packet(peer, {
 		.ptype = PacketType.BROADCAST,

@@ -5,45 +5,17 @@ import enet;
 fn int run_client(String uname) {
 	String username = uname.copy(mem); 
 	defer username.free(mem);
-	if (enet::initialize () != 0) {
-        elog("An error occurred while initializing ENet.");
-        return -1;
-    }
-    defer enet::deinitialize();
-
-	ENetHost* client = enet::host_create(null, 1, 1, 0, 0);
-
-	if( !client) {
-		elog("An error occurred while trying to create an ENet client host!");
-		return -1;
-	}
-
-	ENetAddress address;
-	ENetEvent event;
-	ENetPeer* peer;
-
-	ZString hostname = "127.0.0.1";
-	ushort port = 7777;
-	enet::address_set_host(&address, hostname);
-	address.port = port;
 	
-	peer = enet::host_connect(client, &address, 1, 0);
+	ENetHost*? client = client_create();
+	if(catch client) return 1;
 
-	if(!peer) {
-		elog("No available peers for initiating an ENet connection!");
-		return -1;
-	}
-
-	if(  enet::host_service(client, &event, 5000) > 0 && event.type == ENET_EVENT_TYPE_CONNECT) {
-		log("Connected to %s:%s successfully!", hostname, port);
-	}else {
-		enet::peer_reset(peer);
-		elog("Connection to %s:%s failed!", hostname, port);
-		return 0;
-	}
+	ENetPeer*? server = client_connect(client);
+	if(catch server) return 1;
+	defer client_kill(client, server);
+	
 
 	// START HERE
-	common::send_username(peer, username)!!;
+	common::send_username(server, username)!!;
 
 	Atomic{bool} running;
 
@@ -53,15 +25,62 @@ fn int run_client(String uname) {
 	Thread thread;
 	thread.create( (ThreadFn) &client_event_loop,  &cli)!!;
 
-	client_user_input(peer, username, &running);
+	client_user_input(server, username, &running);
 
 	running.store(false);
 	(void) thread.join();
-	enet::peer_disconnect(peer, 0);
-	enet::host_flush(client);
-	enet::peer_reset(peer);
+	
 	// END HERE
 	return 0;
+}
+
+
+fn ENetHost*? client_create() {
+	if (enet::initialize () != 0) {
+        elog("An error occurred while initializing ENet.");
+        return FAILED_TO_INIT_ENET~;
+    }
+
+	ENetHost* client = enet::host_create(null, 1, 1, 0, 0);
+
+	if( !client) {
+		elog("An error occurred while trying to create an ENet client host!");
+		return FAILED_TO_START_CLIENT~;
+	}
+
+	return client;
+}
+
+fn ENetPeer*? client_connect(ENetHost* client) {
+	ENetAddress address;
+	ZString hostname = "127.0.0.1";
+	ushort port = 7777;
+	enet::address_set_host(&address, hostname);
+	address.port = port;
+	
+	ENetPeer* peer = enet::host_connect(client, &address, 1, 0);
+
+	if(!peer) {
+		elog("No available peers for initiating an ENet connection!");
+		return FAILED_TO_CONNECT_TO_SERVER~;
+	}
+
+	ENetEvent event;
+	if(  enet::host_service(client, &event, 5000) > 0 && event.type == ENET_EVENT_TYPE_CONNECT) {
+		log("Connected to %s:%s successfully!", hostname, address.port);
+	}else {
+		enet::peer_reset(peer);
+		elog("Connection to %s:%s failed!", hostname, address.port);
+		return FAILED_TO_CONNECT_TO_SERVER~;
+	}
+	return peer;
+}
+
+fn void client_kill(ENetHost* client, ENetPeer* server) {
+	enet::peer_disconnect(server, 0);
+	enet::host_flush(client);
+	enet::peer_reset(server);
+	enet::deinitialize();
 }
 
 fn void client_user_input(ENetPeer* server , String username, Atomic{bool}* running) {
