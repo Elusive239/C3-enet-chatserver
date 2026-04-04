@@ -206,9 +206,9 @@ fn Type? read_number(InStream buffer) <Type> @if(!$defined(Type.membersof )) {
 // Write Packet
 
 fn String? write_packet(Packet packet) {
-	if(packet.ptype == ERROR) return INVALID_PACKET_TYPE~;
+	if(packet.ptype == ERROR) return app::INVALID_PACKET_TYPE~;
 	usz packet_len = data_packet_size(packet) + usz.sizeof + PacketType.sizeof  ;
-	char[] buffer =allocator::new_array(tmem, char,
+	char[] buffer = alloc::new_array(tmem, char,
 		packet_len + 1
 	);
 	OutStream writer = ((ByteWriter){}).init_with_buffer(buffer);
@@ -258,7 +258,7 @@ macro write_packet_data(OutStream writer, packet) {
 		case USER_MESSAGE:	return write_packet_data_private{UserMessagePacket}(writer, &packet.usermsg)!;
 		case USER_COMMAND:	return write_packet_data_private{UserCommandPacket}(writer, &packet.usercommand)!;
 
-		case ERROR: return INVALID_PACKET_TYPE~;
+		case ERROR: return app::INVALID_PACKET_TYPE~;
 		default: unreachable("Unimplmeneted Packet Type " +++ $$FUNC +++ " %s" , packet.ptype.nameof);
 	}
 }

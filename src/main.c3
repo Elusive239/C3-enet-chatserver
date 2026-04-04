@@ -23,7 +23,8 @@ fn void main(String[] args) {
 			run_server();
 		} else {
 			String uname = args[1];
-			run_client(uname);
+			run_gui_client();
+			// run_client(uname);
 		}
 	};
 }

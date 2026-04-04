@@ -13,7 +13,6 @@ Server currently hardcoded to use port 7777
  - When typing in one client and recieving a message from another, typed text is displaced in terminal. The actual contents of stdin are of course unaffected.
 
 ## TODO  
- - Replace "io::printfn" and other printing functions with a proper logger of some variety.
  - Raylib or SDL3 based client to replace the Terminal based one currently in use.  
  - User "account" creation (username, password, permissions).   
  	Nothing super complicated. At most for this project just storing it in a .csv file somewhere...  
@@ -25,3 +24,4 @@ Server currently hardcoded to use port 7777
 ## Dependencies:  
 - [C3 Standard library](https://github.com/c3lang/c3c/tree/master/lib/std)  
 - [enet](https://github.com/zpl-c/enet) [(See Bindings)](/lib/enet.c3l)  
+- [SDL3](https://wiki.libsdl.org/SDL3/FrontPage) [(See Bindings)](https://github.com/c3lang/vendor/tree/main/libraries/sdl3.c3l)
