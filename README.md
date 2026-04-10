@@ -1,3 +1,5 @@
+> CURRENTLY BROKEN! WORKING ON IMPLEMENTING BASIC SDL3 UI!
+
 An example text chat client/server written in [C3](https://c3-lang.org/)!  
 
 I've been writing this to figure out client / server shenanigans for an app I want to write.  
@@ -25,3 +27,5 @@ Server currently hardcoded to use port 7777
 - [C3 Standard library](https://github.com/c3lang/c3c/tree/master/lib/std)  
 - [enet](https://github.com/zpl-c/enet) [(See Bindings)](/lib/enet.c3l)  
 - [SDL3](https://wiki.libsdl.org/SDL3/FrontPage) [(See Bindings)](https://github.com/c3lang/vendor/tree/main/libraries/sdl3.c3l)
+- [SDL3_ttf](https://wiki.libsdl.org/SDL3_ttf/FrontPage) [(See Bindings)](https://github.com/c3lang/vendor/tree/20568818d2369f2b1aeb9f7ee5200b623f0a4889/libraries/sdl3_ttf.c3l)
+- [SDL3_image](https://wiki.libsdl.org/SDL3_image/FrontPage) [(See Bindings)](https://github.com/c3lang/vendor/tree/20568818d2369f2b1aeb9f7ee5200b623f0a4889/libraries/sdl3_image.c3l)

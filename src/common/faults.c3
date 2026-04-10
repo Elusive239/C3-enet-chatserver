@@ -3,6 +3,7 @@ module app;
 faultdef FAILED_TO_INIT_ENET;
 faultdef FAILED_TO_START_SERVER;
 faultdef FAILED_TO_START_CLIENT;
+faultdef FAILED_TO_LOAD_FONT;
 faultdef FAILED_TO_CONNECT_TO_SERVER;
 
 faultdef INVALID_PACKET_TYPE;
